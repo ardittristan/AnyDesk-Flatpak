@@ -108,8 +108,8 @@
                         "url-template": "https://gitlab.freedesktop.org/polkit/polkit/-/archive/$version/polkit-$version.tar.gz"
                     },
                     "type": "archive",
-                    "url": "https://gitlab.freedesktop.org/polkit/polkit/-/archive/122/polkit-122.tar.gz",
-                    "sha256": "0d69656d60800835c3d7d1f0a8362b32e1ae3ace2875a35bb624296fc52d5dc4"
+                    "url": "https://gitlab.freedesktop.org/polkit/polkit/-/archive/123/polkit-123.tar.gz",
+                    "sha256": "b69278f6ea0eac406350c45f5720e2fe5e4beaf9f53c16d9902e025965418864"
                 }
             ]
         },
