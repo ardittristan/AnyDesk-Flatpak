@@ -20,7 +20,7 @@ jobs:
         submodules: 'recursive'
     - name: Build
       id: flatpak
-      uses: andyholmes/actions/flatter@main
+      uses: andyholmes/flatter@main
       with:
         files: |
           com.anydesk.Anydesk.json
