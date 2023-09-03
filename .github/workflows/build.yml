@@ -6,17 +6,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  flatpak:
-    name: "Flatpak"
+  flatter:
+    name: Flatter
     runs-on: ubuntu-latest
     container:
-      image: bilelmoussaoui/flatpak-github-actions:freedesktop-22.08
+      image: ghcr.io/andyholmes/flatter/freedesktop/x86_64:22.08
       options: --privileged
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: 'recursive'
-    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.1
+    - name: Build
+      id: flatpak
+      uses: andyholmes/actions/flatter@main
       with:
-        bundle: AnyDesk.flatpak
-        manifest-path: com.anydesk.Anydesk.json
+        files: |
+          com.anydesk.Anydesk.json
+        upload-pages-artifact: true
+        upload-pages-includes: |
+          default.css
+          index.html
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: flatter
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+    - name: GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v1
