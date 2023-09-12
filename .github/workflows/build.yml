@@ -1,31 +1,94 @@
-name: build
-
+name: Update Flatpak Repo
 on:
-  #push:
-  #  branches: [ "master" ]
   workflow_dispatch:
 
+concurrency: ${{ github.repository }}
+permissions:
+  contents: write
+
+env:
+  # Used to generate .flatpakref and .flatpakrepo files, change if you are using a custom domain
+  PAGES_REPO_URL: ${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+  # The value '0' means only the latest version of a given flatpak is kept in the repo
+  FLATPAK_HISTORY_LEN: 0
+  # Wether or not to generate deltas for updates, uses extra storage but can make updates smaller
+  FLATPAK_DELTAS: true
+
+  FLATPAK_MANIFEST: "com.anydesk.Anydesk.json"
+
+  FLATPAK_SRC: src-dir
+  FLATPAK_BUILD: build-dir
+  PAGES_REPO: repo-dir
+
 jobs:
-  flatter:
-    name: Flatter
+  build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/andyholmes/flatter/freedesktop/x86_64:22.08
-      options: --privileged
-    permissions:
-      contents: write
+
     steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: 'recursive'
-    - name: Build
-      id: flatpak
-      uses: andyholmes/flatter@main
-      with:
-        files: |
-          com.anydesk.Anydesk.json
-    - name: Deploy Repository
-      uses: JamesIves/github-pages-deploy-action@releases/v4
-      with:
-        folder: ${{ steps.flatpak.outputs.repository }}
-        target-folder: repo
+      - name: Checkout Flatpak Source
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          path: ${{ env.FLATPAK_SRC }}
+
+      - name: Checkout Pages Repo
+        uses: actions/checkout@v3
+        with:
+          ref: gh-pages
+          path: ${{ env.PAGES_REPO }}
+
+      - name: Install flatpak-builder and flatpak
+        run: |
+          set -e
+          sudo apt update -y
+          sudo apt install -y flatpak-builder
+
+      - name: Dump canonical manifest
+        run: |
+          set -e
+          flatpak-builder --show-manifest ./${{ env.FLATPAK_SRC }}/${{ env.FLATPAK_MANIFEST }} > canonical-manifest.json
+
+      - name: Download flatpak SDK and sources
+        run: |
+          set -e
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --install-deps-from=flathub --install-deps-only --user /dev/null ./${{ env.FLATPAK_SRC }}/${{ env.FLATPAK_MANIFEST }}
+          flatpak-builder --download-only /dev/null ./${{ env.FLATPAK_SRC }}/${{ env.FLATPAK_MANIFEST }}
+
+      - name: Prime cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            .flatpak-builder/ccache
+          key: flatpak-builder-${{ hashFiles('canonical-manifest.json') }}
+          restore-keys: |
+            flatpak-builder-
+
+      - name: Build flatpak
+        run: |
+          set -e
+          mkdir -p ./${{ env.PAGES_REPO }}/repo
+          flatpak-builder --disable-updates --disable-download --ccache --sandbox --repo="./${{ env.PAGES_REPO }}/repo" ${{ env.FLATPAK_BUILD }} ${{ env.FLATPAK_SRC }}/${{ env.FLATPAK_MANIFEST }}
+
+      - name: Update Repo
+        run: |
+          set -e
+          mkdir -p ./${{ env.PAGES_REPO }}/repo/refs/remotes ./${{ env.PAGES_REPO }}/repo/refs/mirrors
+          touch ./${{ env.PAGES_REPO }}/repo/refs/remotes/.gitkeep ./${{ env.PAGES_REPO }}/repo/refs/mirrors/.gitkeep
+          flatpak build-update-repo --no-update-summary --prune --prune-depth=${{ env.FLATPAK_HISTORY_LEN }} ./${{ env.PAGES_REPO }}/repo
+          flatpak build-update-repo --generate-static-deltas ./${{ env.PAGES_REPO }}/repo
+
+      - name: Write .flatpakrepo file
+        run: |
+          set -e
+          echo "[Flatpak Repo]
+          Title=${{ env.PAGES_REPO_URL }}
+          Url=${{ env.PAGES_REPO_URL }}repo/" > ${{ env.PAGES_REPO }}/${{ github.repository_owner }}.flatpakrepo
+
+      - name: Deploy Repo
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ env.PAGES_REPO }}
+          enable_jekyll: true
+          force_orphan: true
